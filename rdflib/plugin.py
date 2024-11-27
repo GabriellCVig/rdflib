@@ -244,6 +244,12 @@ register(
     "PrettyXMLSerializer",
 )
 register(
+    "cim-xml",
+    Serializer,
+    "rdflib.plugins.serializers.cimxml",
+    "CIMXMLSerializer",
+)
+register(
     "text/n3",
     Serializer,
     "rdflib.plugins.serializers.n3",

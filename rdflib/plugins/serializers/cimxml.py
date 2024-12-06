@@ -114,17 +114,16 @@ class CIMXMLSerializer(Serializer):
 
         if subject in self.forceRDFAbout:
             writer.push(RDFVOC.Description)
-            writer.attribute(RDFVOC.about, self.relativize(subject))
+            writer.attribute(RDFVOC.ID, self.relativize(subject))
             writer.pop(RDFVOC.Description)
-            self.forceRDFAbout.remove(subject)  # type: ignore[arg-type]
+            self.forceRDFAbout.remove(subject)
 
         elif subject not in self.__serialized:
             self.__serialized[subject] = 1
             type = first(store.objects(subject, RDF.type))
 
             try:
-                # type error: Argument 1 to "qname" of "NamespaceManager" has incompatible type "Optional[Node]"; expected "str"
-                self.nm.qname(type)  # type: ignore[arg-type]
+                self.nm.qname(type)
             except Exception:
                 type = None
 
@@ -132,35 +131,28 @@ class CIMXMLSerializer(Serializer):
             writer.push(element)
 
             if isinstance(subject, BNode):
-
                 def subj_as_obj_more_than(ceil):
                     return True
-                    # more_than(store.triples((None, None, subject)), ceil)
 
-                # here we only include BNode labels if they are referenced
-                # more than once (this reduces the use of redundant BNode
-                # identifiers)
                 if subj_as_obj_more_than(1):
                     writer.attribute(RDFVOC.nodeID, fix(subject))
-
             else:
-                writer.attribute(RDFVOC.about, self.relativize(subject))
+                writer.attribute(RDFVOC.ID, self.relativize(subject))
 
             if (subject, None, None) in store:
                 for _predicate, _object in store.predicate_objects(subject):
-                    object_: IdentifiedNode | Literal = _object  # type: ignore[assignment]
-                    predicate: IdentifiedNode = _predicate  # type: ignore[assignment]
+                    object_ = _object
+                    predicate = _predicate
                     if not (predicate == RDF.type and object_ == type):
                         self.predicate(predicate, object_, depth + 1)
 
             writer.pop(element)
 
         elif subject in self.forceRDFAbout:
-            # TODO FIXME?: this looks like a duplicate of first condition
             writer.push(RDFVOC.Description)
-            writer.attribute(RDFVOC.about, self.relativize(subject))
+            writer.attribute(RDFVOC.ID, self.relativize(subject))
             writer.pop(RDFVOC.Description)
-            self.forceRDFAbout.remove(subject)  # type: ignore[arg-type]
+            self.forceRDFAbout.remove(subject)
 
     def predicate(
         self, predicate: Identifier, object: Identifier, depth: int = 1

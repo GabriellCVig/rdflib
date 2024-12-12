@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import xml.dom.minidom
@@ -31,8 +30,10 @@ def fix(val: str) -> str:
         return val
 
 class CIMXMLSerializer(Serializer):
-    def __init__(self, store: Graph, max_depth=3):
+    def __init__(self, store: Graph):
         super(CIMXMLSerializer, self).__init__(store)
+        self.profile_uri = None
+        self.max_depth = 3
         self.forceRDFAbout: set[URIRef] = set()
 
     def serialize(
@@ -42,71 +43,95 @@ class CIMXMLSerializer(Serializer):
         encoding: str | None = None,
         **kwargs: Any,
     ) -> None:
+        self.profile_uri = kwargs.get('profile_uri')
+        if not self.profile_uri:
+            raise ValueError("Missing required 'profile_uri' parameter.")
+
+        self.max_depth = kwargs.get("max_depth", 3)
+        assert self.max_depth > 0, "max_depth must be greater than 0"
+
         self.__serialized: dict[IdentifiedNode | Literal, int] = {}
         store = self.store
-        # if base is given here, use that, if not and a base is set for the graph use that
         if base is not None:
             self.base = base
         elif store.base is not None:
             self.base = store.base
-        self.max_depth = kwargs.get("max_depth", 3)
-        assert self.max_depth > 0, "max_depth must be greater than 0"
 
         self.nm = nm = store.namespace_manager
+
+        
         self.writer = writer = XMLWriter(stream, nm, encoding)
         namespaces = {}
 
+        # Collect all the namespaces used in the graph
         possible: set[Node] = set(store.predicates()).union(
             store.objects(None, RDF.type)
         )
 
         for predicate in possible:
-            # type error: Argument 1 to "compute_qname_strict" of "NamespaceManager" has incompatible type "Node"; expected "str"
-            prefix, namespace, local = nm.compute_qname_strict(predicate)  # type: ignore[arg-type]
-            namespaces[prefix] = namespace
+            try:
+                prefix, namespace, local = nm.compute_qname_strict(predicate)
+                namespaces[prefix] = namespace
+            except Exception:
+                continue
 
+        # Add required namespaces
         namespaces["rdf"] = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+        namespaces["md"] = "http://iec.ch/TC57/61970-552/ModelDescription/1#"
+        namespaces["cim"] = "http://iec.ch/TC57/2013/CIM-schema-cim16#"
 
+        # Write the XML declaration
+        stream.write(b'<?xml version="1.0" encoding="UTF-8"?>\n')
+
+        # Write the CIMXML processing instruction
+        stream.write(b'<?iec61970-552 version="2.0"?>\n')
+
+        # Start the rdf:RDF element
         writer.push(RDFVOC.RDF)
-
-        if "xml_base" in kwargs:
-            writer.attribute(XMLBASE, kwargs["xml_base"])
-        elif self.base:
-            writer.attribute(XMLBASE, self.base)
-
+        writer.attribute(XMLBASE, "urn:uuid:")
         writer.namespaces(namespaces.items())
 
-        subject: IdentifiedNode | Literal
-        # Write out subjects that can not be inline
-        # type error: Incompatible types in assignment (expression has type "Node", variable has type "IdentifiedNode")
-        for subject in store.subjects():  # type: ignore[assignment]
-            if (None, None, subject) in store:
-                if (subject, None, subject) in store:
-                    self.subject(subject, 1)
-            else:
-                self.subject(subject, 1)
+        # Serialize the FullModel
+        self.serialize_full_model(**kwargs)
 
-        # write out anything that has not yet been reached
-        # write out BNodes last (to ensure they can be inlined where possible)
-        bnodes = set()
-
-        # type error: Incompatible types in assignment (expression has type "Node", variable has type "IdentifiedNode")
-        for subject in store.subjects():  # type: ignore[assignment]
-            if isinstance(subject, BNode):
-                bnodes.add(subject)
-                continue
+        # Serialize the rest of the graph
+        for subject in store.subjects():
             self.subject(subject, 1)
 
-        # now serialize only those BNodes that have not been serialized yet
-        for bnode in bnodes:
-            if bnode not in self.__serialized:
-                self.subject(subject, 1)
-
+        # Close the rdf:RDF element
         writer.pop(RDFVOC.RDF)
-        stream.write("\n".encode("latin-1"))
+        stream.write(b"\n")
+        self.__serialized = None  # Clear serialized subjects
 
-        # Set to None so that the memory can get garbage collected.
-        self.__serialized = None  # type: ignore[assignment]
+    def serialize_full_model(self, **kwargs) -> None:
+        writer = self.writer
+        nm = self.nm  # Namespace manager
+
+        md_ns = Namespace("http://iec.ch/TC57/61970-552/ModelDescription/1#")
+
+        # Get QName for md:FullModel
+        md_full_model_qname = nm.qname(md_ns.FullModel)
+
+        # Start md:FullModel element
+        writer.push(md_full_model_qname)
+        writer.attribute("rdf:about", kwargs.get('rdf_about', '_[UUID]'))
+
+        # List of child elements and their values
+        elements = [
+            (md_ns.ModelScenarioTime, kwargs.get('scenarioTime', '')),
+            (md_ns.ModelCreated, kwargs.get('created', '')),
+            (md_ns.ModelDescription, kwargs.get('description', '')),
+            (md_ns.ModelVersion, kwargs.get('version', '')),
+            (md_ns.ModelProfile, self.profile_uri),
+            (md_ns.ModelModelingAuthoritySet, kwargs.get('modelingAuthoritySet', '')),
+        ]
+
+        for element_uri, text in elements:
+            element_qname = nm.qname(element_uri)
+            writer.element(element_qname, text)
+
+        # End md:FullModel element
+        writer.pop(md_full_model_qname)
 
     def subject(self, subject: IdentifiedNode | Literal, depth: int = 1):
         store = self.store
@@ -223,3 +248,6 @@ class CIMXMLSerializer(Serializer):
                     writer.attribute(RDFVOC.resource, self.relativize(object))
 
         writer.pop(predicate)
+
+    def relativize(self, uri):
+        return "#_" + str(uri)

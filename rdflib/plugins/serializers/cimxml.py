@@ -80,12 +80,6 @@ class CIMXMLSerializer(Serializer):
         namespaces["rdf"] = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
         namespaces["md"] = CIM_PROFILE_NAMESPACE
         namespaces["cim"] = "http://iec.ch/TC57/2013/"
-        
-        # Write the XML declaration
-        stream.write(b'<?xml version="1.0" encoding="UTF-8"?>\n')
-
-        # Write the CIMXML processing instruction
-        stream.write(b'<?iec61970-552 version="2.0"?>\n')
 
         # Start the rdf:RDF element
         writer.push(RDFVOC.RDF)
@@ -95,8 +89,8 @@ class CIMXMLSerializer(Serializer):
         # Serialize the FullModel
         self.serialize_full_model(**kwargs)
 
-        # Serialize the rest of the graph
-        for subject in store.subjects():
+        # Sort the subjects by type, then by URI, before serializing
+        for subject in sorted(store.subjects(), key=lambda s: (first(store.objects(s, RDF.type)), s)):
             self.subject(subject, 1)
 
         # Close the rdf:RDF element
@@ -164,9 +158,8 @@ class CIMXMLSerializer(Serializer):
                 writer.attribute(RDFVOC.ID, self.relativize(subject))
 
             if (subject, None, None) in store:
-                for _predicate, _object in store.predicate_objects(subject):
-                    object_ = _object
-                    predicate = _predicate
+                predicates_objects = sorted(store.predicate_objects(subject), key=lambda po: str(po[0]))
+                for predicate, object_ in predicates_objects:
                     if not (predicate == RDF.type and object_ == type):
                         self.predicate(predicate, object_, depth + 1)
 

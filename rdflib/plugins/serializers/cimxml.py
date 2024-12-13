@@ -19,6 +19,7 @@ from .xmlwriter import ESCAPE_ENTITIES
 XMLLANG = "http://www.w3.org/XML/1998/namespacelang"
 XMLBASE = "http://www.w3.org/XML/1998/namespacebase"
 OWL_NS = Namespace("http://www.w3.org/2002/07/owl#")
+CIM_PROFILE_NAMESPACE = Namespace("http://iec.ch/TC57/61970-552/ModelDescription/1#")
 
 
 # TODO:
@@ -62,7 +63,7 @@ class CIMXMLSerializer(Serializer):
         
         self.writer = writer = XMLWriter(stream, nm, encoding)
         namespaces = {}
-
+        
         # Collect all the namespaces used in the graph
         possible: set[Node] = set(store.predicates()).union(
             store.objects(None, RDF.type)
@@ -77,9 +78,9 @@ class CIMXMLSerializer(Serializer):
 
         # Add required namespaces
         namespaces["rdf"] = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-        namespaces["md"] = "http://iec.ch/TC57/61970-552/ModelDescription/1#"
-        namespaces["cim"] = "http://iec.ch/TC57/2013/CIM-schema-cim16#"
-
+        namespaces["md"] = CIM_PROFILE_NAMESPACE
+        namespaces["cim"] = "http://iec.ch/TC57/2013/"
+        
         # Write the XML declaration
         stream.write(b'<?xml version="1.0" encoding="UTF-8"?>\n')
 
@@ -107,14 +108,13 @@ class CIMXMLSerializer(Serializer):
         writer = self.writer
         nm = self.nm  # Namespace manager
 
-        md_ns = Namespace("http://iec.ch/TC57/61970-552/ModelDescription/1#")
-
-        # Get QName for md:FullModel
-        md_full_model_qname = nm.qname(md_ns.FullModel)
+        md_ns = CIM_PROFILE_NAMESPACE
+        
+        nm.bind("md", md_ns)
 
         # Start md:FullModel element
-        writer.push(md_full_model_qname)
-        writer.attribute("rdf:about", kwargs.get('rdf_about', '_[UUID]'))
+        writer.push(md_ns.FullModel)
+        writer.attribute(RDFVOC.about, kwargs.get('rdf_about', '_[UUID]'))
 
         # List of child elements and their values
         elements = [
@@ -127,11 +127,10 @@ class CIMXMLSerializer(Serializer):
         ]
 
         for element_uri, text in elements:
-            element_qname = nm.qname(element_uri)
-            writer.element(element_qname, text)
+            writer.element(element_uri, text)
 
         # End md:FullModel element
-        writer.pop(md_full_model_qname)
+        writer.pop(md_ns.FullModel)
 
     def subject(self, subject: IdentifiedNode | Literal, depth: int = 1):
         store = self.store
@@ -250,4 +249,9 @@ class CIMXMLSerializer(Serializer):
         writer.pop(predicate)
 
     def relativize(self, uri):
-        return "#_" + str(uri)
+        uri_str = str(uri)
+        for prefix, namespace in self.nm.namespaces():
+            ns_str = str(namespace)
+            if uri_str.startswith(ns_str):
+                return "_" + uri_str[len(ns_str):]
+        return "_" + uri_str

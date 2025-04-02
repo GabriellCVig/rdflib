@@ -20,6 +20,7 @@ XMLLANG = "http://www.w3.org/XML/1998/namespacelang"
 XMLBASE = "http://www.w3.org/XML/1998/namespacebase"
 OWL_NS = Namespace("http://www.w3.org/2002/07/owl#")
 CIM_PROFILE_NAMESPACE = Namespace("http://iec.ch/TC57/61970-552/ModelDescription/1#")
+CIM_NAMESPACE = Namespace("http://iec.ch/TC57/CIM100#")
 
 
 # TODO:
@@ -30,12 +31,16 @@ def fix(val: str) -> str:
     else:
         return val
 
+# ... existing imports ...
+
 class CIMXMLSerializer(Serializer):
     def __init__(self, store: Graph):
         super(CIMXMLSerializer, self).__init__(store)
         self.profile_uri = None
         self.max_depth = 3
         self.forceRDFAbout: set[URIRef] = set()
+        # Store cim_namespace as an instance variable
+        self.cim_namespace = CIM_NAMESPACE  # Default value
 
     def serialize(
         self,
@@ -47,6 +52,11 @@ class CIMXMLSerializer(Serializer):
         self.profile_uri = kwargs.get('profile_uri')
         if not self.profile_uri:
             raise ValueError("Missing required 'profile_uri' parameter.")
+
+        # Get cim_namespace from kwargs if provided
+        cim_namespace_str = kwargs.get('cim_namespace')
+        if cim_namespace_str:
+            self.cim_namespace = Namespace(cim_namespace_str)
 
         self.max_depth = kwargs.get("max_depth", 3)
         assert self.max_depth > 0, "max_depth must be greater than 0"
@@ -60,7 +70,6 @@ class CIMXMLSerializer(Serializer):
 
         self.nm = nm = store.namespace_manager
 
-        
         self.writer = writer = XMLWriter(stream, nm, encoding)
         namespaces = {}
         
@@ -76,10 +85,10 @@ class CIMXMLSerializer(Serializer):
             except Exception:
                 continue
 
-        # Add required namespaces
+        # Add required namespaces, using the instance variable cim_namespace
         namespaces["rdf"] = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
         namespaces["md"] = CIM_PROFILE_NAMESPACE
-        namespaces["cim"] = "http://iec.ch/TC57/2013/"
+        namespaces["cim"] = self.cim_namespace
 
         # Start the rdf:RDF element
         writer.push(RDFVOC.RDF)

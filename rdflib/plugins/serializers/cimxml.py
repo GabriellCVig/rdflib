@@ -112,25 +112,35 @@ class CIMXMLSerializer(Serializer):
         nm = self.nm  # Namespace manager
 
         md_ns = CIM_PROFILE_NAMESPACE
-        
+
         nm.bind("md", md_ns)
 
         # Start md:FullModel element
         writer.push(md_ns.FullModel)
         writer.attribute(RDFVOC.about, kwargs.get('rdf_about', '_[UUID]'))
 
+
         # List of child elements and their values
         elements = [
-            (md_ns.ModelScenarioTime, kwargs.get('scenarioTime', '')),
-            (md_ns.ModelCreated, kwargs.get('created', '')),
-            (md_ns.ModelDescription, kwargs.get('description', '')),
-            (md_ns.ModelVersion, kwargs.get('version', '')),
-            (md_ns.ModelProfile, self.profile_uri),
-            (md_ns.ModelModelingAuthoritySet, kwargs.get('modelingAuthoritySet', '')),
+            (md_ns["Model.scenarioTime"], kwargs.get('scenarioTime', '')),
+            (md_ns["Model.created"], kwargs.get('created', '')),
+            (md_ns["Model.description"], kwargs.get('description', '')),
+            (md_ns["Model.version"], kwargs.get('version', '')),
+            (md_ns["Model.profile"], self.profile_uri),
+            (md_ns["Model.modelingAuthoritySet"], kwargs.get('modelingAuthoritySet', '')),
         ]
 
         for element_uri, text in elements:
             writer.element(element_uri, text)
+
+        # Add model:dependentOn if provided
+        dependent_on_eq = kwargs.get('dependent_on_eq')
+        if dependent_on_eq:
+            # Create Model.DependentOn element with resource attribute
+            model_dependent_on = URIRef("http://iec.ch/TC57/61970-552/ModelDescription/1#Model.DependentOn")
+            writer.push(model_dependent_on)
+            writer.attribute(RDFVOC.resource, dependent_on_eq)
+            writer.pop(model_dependent_on)
 
         # End md:FullModel element
         writer.pop(md_ns.FullModel)

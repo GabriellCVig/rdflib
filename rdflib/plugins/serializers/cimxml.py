@@ -128,6 +128,7 @@ class CIMXMLSerializer(Serializer):
             (md_ns["Model.version"], kwargs.get('version', '')),
             (md_ns["Model.profile"], self.profile_uri),
             (md_ns["Model.modelingAuthoritySet"], kwargs.get('modelingAuthoritySet', '')),
+            (md_ns["Model.applicationSoftware"], kwargs.get('applicationSoftware', '')),
         ]
 
         for element_uri, text in elements:

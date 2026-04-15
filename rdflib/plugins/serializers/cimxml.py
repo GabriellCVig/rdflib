@@ -31,7 +31,6 @@ def fix(val: str) -> str:
     else:
         return val
 
-# ... existing imports ...
 
 class CIMXMLSerializer(Serializer):
     def __init__(self, store: Graph):
